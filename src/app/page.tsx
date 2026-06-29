@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Trophy, Users, BarChart3, ArrowRight, Lock, Zap, Globe, DollarSign, Copy, Check
+  Trophy, Users, BarChart3, ArrowRight, Lock, Zap, Globe, DollarSign, Copy, Check, RefreshCw
 } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { Button } from "@/components/ui/button";
@@ -129,12 +129,28 @@ function WelcomeHero() {
 }
 
 function Dashboard() {
-  const { currentPlayer, league, leagueMembers, isLocked: checkLocked } = useAppStore();
+  const { currentPlayer, league, leagueMembers, isLocked: checkLocked, syncFromESPN } = useAppStore();
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   if (!currentPlayer) return null;
 
   const locked = league ? checkLocked() : false;
   const members = leagueMembers();
   const completionPct = currentPlayer.completionPct;
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const { updated } = await syncFromESPN();
+      setSyncMsg(updated > 0 ? `✅ Synced ${updated} match${updated !== 1 ? "es" : ""}!` : "Already up to date.");
+    } catch {
+      setSyncMsg("❌ Failed to fetch from ESPN.");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
@@ -156,7 +172,18 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        {league && locked && <Badge variant="locked" className="text-sm">🔒 Locked</Badge>}
+        <div className="flex items-center gap-2">
+          {league && locked && <Badge variant="locked" className="text-sm">🔒 Locked</Badge>}
+          {league && (
+            <div className="flex flex-col items-end gap-1">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleSync} disabled={syncing}>
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Results"}
+              </Button>
+              {syncMsg && <span className="text-xs text-muted-foreground">{syncMsg}</span>}
+            </div>
+          )}
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

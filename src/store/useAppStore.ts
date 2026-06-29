@@ -14,6 +14,7 @@ import {
 import { generateId, generateInviteCode, isLocked } from "@/lib/utils";
 import type { Player, League, Match, Predictions } from "@/types";
 import { INITIAL_MATCHES, TIEBREAK_KEY } from "@/lib/constants";
+import { fetchESPNResults, mergeESPNResults } from "@/lib/espn";
 
 // Firestore collection/doc helpers
 const playerRef = (id: string) => doc(db, "players", id);
@@ -48,6 +49,8 @@ interface AppStore {
   resetPredictions: () => Promise<void>;
 
   setOfficialResult: (matchId: string, winnerId: string | null) => Promise<void>;
+  syncFromESPN: () => Promise<{ updated: number }>;
+
 
   addProxyPlayer: (name: string) => Promise<Player | null>;
   setProxyPrediction: (playerId: string, matchId: string, winnerId: string | null) => Promise<void>;
@@ -499,6 +502,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const updated = { ...officialResults, [matchId]: winnerId };
     await saveResults(league.id, updated);
     set({ officialResults: updated });
+  },
+
+  async syncFromESPN() {
+    const { officialResults, league } = get();
+    if (!league) return { updated: 0 };
+    const syncResult = await fetchESPNResults();
+    if (syncResult.updated === 0) return { updated: 0 };
+    const merged = mergeESPNResults(officialResults, syncResult);
+    // Only write matches that are actually new/changed
+    const changed = syncResult.matches.filter(
+      ({ matchId, winner }) => officialResults[matchId] !== winner
+    );
+    if (changed.length === 0) return { updated: 0 };
+    await saveResults(league.id, merged);
+    set({ officialResults: merged });
+    return { updated: changed.length };
   },
 
   async addProxyPlayer(name) {
