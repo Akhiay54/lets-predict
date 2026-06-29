@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import {
   doc, getDoc, setDoc, updateDoc, onSnapshot,
-  collection, getDocs, deleteDoc, Unsubscribe,
+  collection, getDocs, deleteDoc, deleteField, Unsubscribe,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { computeBracket, computeCompletionPct, getDescendantMatchIds } from "@/lib/bracket";
@@ -130,13 +130,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const playerId = getStoredPlayerId();
     const storedLeagueId = getStoredLeagueId();
+    console.log("[hydrate] start", { playerId, storedLeagueId });
 
     // Fetch player first so we can fall back to player.leagueId if localStorage is missing it
     const player = playerId ? await fetchPlayer(playerId) : null;
+    console.log("[hydrate] player", player?.name, "leagueId on doc:", player?.leagueId);
 
     // localStorage is the fast path; Firestore player doc is the fallback (cross-browser restore)
     const leagueId = storedLeagueId ?? player?.leagueId ?? null;
     const league = leagueId ? await fetchLeague(leagueId) : null;
+    console.log("[hydrate] leagueId resolved:", leagueId, "league found:", league?.name ?? null);
     // Sync localStorage so subsequent hydrations are fast
     if (league && !storedLeagueId) saveStoredLeagueId(league.id);
 
@@ -154,6 +157,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ]);
     }
 
+    console.log("[hydrate] done — player:", player?.name, "league:", league?.name, "allPlayers:", allPlayers.length);
     set({ currentPlayer: player, league, allPlayers, officialResults, computedMatches, hydrated: true });
 
     // Set up real-time listeners if we have a league
@@ -222,7 +226,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     // Restore existing account by name, or create new
+    console.log("[setPlayer] looking up name:", name);
     const returning = await findPlayerByName(name);
+    console.log("[setPlayer] found in Firestore:", returning?.id, "leagueId:", returning?.leagueId);
     const player: Player = returning ?? {
       id: generateId(),
       name,
@@ -239,6 +245,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const leagueId = player.leagueId ?? null;
     const league = leagueId ? await fetchLeague(leagueId) : null;
 
+    console.log("[setPlayer] player.leagueId:", player.leagueId, "→ fetching league:", leagueId);
+    console.log("[setPlayer] league found:", league?.name ?? null);
     // Now safe to clear/update localStorage league pointer
     if (league) {
       saveStoredLeagueId(league.id);
@@ -378,8 +386,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     };
     await saveLeague(updated);
     // Remove leagueId from player doc so name-based restore doesn't rejoin them
-    const updatedPlayer = { ...currentPlayer, leagueId: undefined };
-    await savePlayer(updatedPlayer);
+    await updateDoc(playerRef(currentPlayer.id), { leagueId: deleteField() });
+    const updatedPlayer: Player = { ...currentPlayer };
+    delete updatedPlayer.leagueId;
     clearStoredLeagueId();
     get()._unsubs.forEach((u) => u());
     set({
@@ -409,10 +418,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     };
     await saveLeague(updated);
     // Clear the leagueId stamp from the removed player's doc so they don't auto-rejoin
-    const removedPlayer = await fetchPlayer(playerId);
-    if (removedPlayer) {
-      await savePlayer({ ...removedPlayer, leagueId: undefined });
-    }
+    await updateDoc(playerRef(playerId), { leagueId: deleteField() }).catch(() => {});
     const allPlayers = get().allPlayers.filter((p) => p.id !== playerId);
     set({ league: updated, allPlayers });
   },
