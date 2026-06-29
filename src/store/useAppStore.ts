@@ -129,12 +129,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ _unsubs: [] });
 
     const playerId = getStoredPlayerId();
-    const leagueId = getStoredLeagueId();
+    const storedLeagueId = getStoredLeagueId();
 
-    const [player, league] = await Promise.all([
-      playerId ? fetchPlayer(playerId) : Promise.resolve(null),
-      leagueId ? fetchLeague(leagueId) : Promise.resolve(null),
-    ]);
+    // Fetch player first so we can fall back to player.leagueId if localStorage is missing it
+    const player = playerId ? await fetchPlayer(playerId) : null;
+
+    // localStorage is the fast path; Firestore player doc is the fallback (cross-browser restore)
+    const leagueId = storedLeagueId ?? player?.leagueId ?? null;
+    const league = leagueId ? await fetchLeague(leagueId) : null;
+    // Sync localStorage so subsequent hydrations are fast
+    if (league && !storedLeagueId) saveStoredLeagueId(league.id);
 
     const computedMatches = player
       ? computeBracket(player.predictions)
@@ -200,7 +204,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   async setPlayer(name: string) {
     const existing = get().currentPlayer;
-    if (existing && existing.name === name) return existing;
+    if (existing && existing.name === name) {
+      // Already the right player — but ensure league is loaded if it wasn't
+      if (!get().league && existing.leagueId) {
+        const league = await fetchLeague(existing.leagueId);
+        if (league) {
+          saveStoredLeagueId(league.id);
+          const [allPlayers, officialResults] = await Promise.all([
+            fetchLeagueMembers(league),
+            fetchResults(league.id),
+          ]);
+          set({ league, allPlayers, officialResults });
+          get()._subscribeLeague(league.id);
+        }
+      }
+      return existing;
+    }
 
     // Restore existing account by name, or create new
     const returning = await findPlayerByName(name);
@@ -215,15 +234,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     await savePlayer(player);
     saveStoredPlayerId(player.id);
-    // Clear any leagueId left by a previous user on this browser
-    clearStoredLeagueId();
 
     // Only use leagueId from the Firestore player doc — never inherit from localStorage
     const leagueId = player.leagueId ?? null;
     const league = leagueId ? await fetchLeague(leagueId) : null;
-    if (league) saveStoredLeagueId(league.id);
+
+    // Now safe to clear/update localStorage league pointer
+    if (league) {
+      saveStoredLeagueId(league.id);
+    } else {
+      clearStoredLeagueId();
+    }
+
     const computedMatches = computeBracket(player.predictions);
-    set({ currentPlayer: player, league, computedMatches });
+
+    let allPlayers: Player[] = [];
+    let officialResults: Predictions = {};
+    if (league) {
+      [allPlayers, officialResults] = await Promise.all([
+        fetchLeagueMembers(league),
+        fetchResults(league.id),
+      ]);
+    }
+
+    set({ currentPlayer: player, league, allPlayers, officialResults, computedMatches });
     if (league) get()._subscribeLeague(league.id);
     return player;
   },
@@ -231,7 +265,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   logout() {
     get()._unsubs.forEach((u) => u());
     clearStoredPlayerId();
-    set({ currentPlayer: null, _unsubs: [] });
+    clearStoredLeagueId();
+    set({
+      currentPlayer: null,
+      league: null,
+      allPlayers: [],
+      officialResults: {},
+      computedMatches: INITIAL_MATCHES,
+      _unsubs: [],
+    });
   },
 
   async createLeague(name, lockTime) {
@@ -340,7 +382,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await savePlayer(updatedPlayer);
     clearStoredLeagueId();
     get()._unsubs.forEach((u) => u());
-    set({ league: null, allPlayers: [], currentPlayer: updatedPlayer, _unsubs: [] });
+    set({
+      league: null,
+      allPlayers: [],
+      officialResults: {},
+      computedMatches: INITIAL_MATCHES,
+      currentPlayer: updatedPlayer,
+      _unsubs: [],
+    });
   },
 
   async updateLeague(updates) {
@@ -359,7 +408,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       members: league.members.filter((m) => m.playerId !== playerId),
     };
     await saveLeague(updated);
-    await deleteDoc(playerRef(playerId));
+    // Clear the leagueId stamp from the removed player's doc so they don't auto-rejoin
+    const removedPlayer = await fetchPlayer(playerId);
+    if (removedPlayer) {
+      await savePlayer({ ...removedPlayer, leagueId: undefined });
+    }
     const allPlayers = get().allPlayers.filter((p) => p.id !== playerId);
     set({ league: updated, allPlayers });
   },
@@ -369,11 +422,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!currentPlayer) return;
     if (league && isLocked(league.lockTime)) return;
 
-    const predictions: Predictions = { ...currentPlayer.predictions };
+    // Read fresh from Firestore to avoid read-modify-write race on rapid clicks
+    const fresh = await fetchPlayer(currentPlayer.id);
+    const base = fresh ?? currentPlayer;
+
+    const predictions: Predictions = { ...base.predictions };
     getDescendantMatchIds(matchId).forEach((id) => { delete predictions[id]; });
     predictions[matchId] = winnerId;
     const completionPct = computeCompletionPct(predictions);
-    const updated: Player = { ...currentPlayer, predictions, completionPct };
+    const updated: Player = { ...base, predictions, completionPct };
     const computedMatches = computeBracket(predictions);
 
     await savePlayer(updated);

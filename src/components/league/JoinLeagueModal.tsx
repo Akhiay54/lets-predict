@@ -81,9 +81,6 @@ export function JoinLeagueModal() {
               placeholder="e.g. ABC12345"
               className="h-11 uppercase font-mono tracking-widest text-center text-lg"
               {...register("inviteCode")}
-              onChange={(e) => {
-                e.target.value = e.target.value.toUpperCase();
-              }}
             />
             {errors.inviteCode && (
               <p className="text-xs text-destructive mt-1">{errors.inviteCode.message}</p>

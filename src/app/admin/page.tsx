@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Shield, Save, Trophy, AlertTriangle, Target, UserPlus, Users, ChevronDown, ChevronUp, Edit3, RefreshCw } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
-import { computeBracket } from "@/lib/bracket";
+import { computeBracket, getDescendantMatchIds } from "@/lib/bracket";
 import { MatchCard } from "@/components/bracket/MatchCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,12 @@ export default function AdminPage() {
   const [tiebreakerInput, setTiebreakerInput] = useState(
     officialResults[TIEBREAK_KEY] ?? ""
   );
+  // Keep input in sync when officialResults arrive via onSnapshot after mount
+  useEffect(() => {
+    if (officialResults[TIEBREAK_KEY] != null) {
+      setTiebreakerInput(officialResults[TIEBREAK_KEY] as string);
+    }
+  }, [officialResults]);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [addPlayerError, setAddPlayerError] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -48,8 +54,9 @@ export default function AdminPage() {
 
   const handleProxySelect = async (matchId: string, winnerId: string | null) => {
     if (!editingPlayer) return;
-    // Optimistically apply locally so the bracket re-renders immediately
+    // Optimistically apply locally — mirror what setProxyPrediction does in the store
     const predictions = { ...editingPlayer.predictions };
+    getDescendantMatchIds(matchId).forEach((id) => { delete predictions[id]; });
     predictions[matchId] = winnerId;
     setEditingPlayer({ ...editingPlayer, predictions });
     await setProxyPrediction(editingPlayer.id, matchId, winnerId);

@@ -94,8 +94,13 @@ export function LeagueCard({ league, currentPlayer, members }: LeagueCardProps) 
     }
   };
 
+  const [lockError, setLockError] = useState("");
   const handleUpdateLock = async () => {
-    await updateLeague({ lockTime: new Date(newLockTime).toISOString() });
+    const d = new Date(newLockTime);
+    if (isNaN(d.getTime())) { setLockError("Invalid date"); return; }
+    if (d <= new Date()) { setLockError("Must be a future date"); return; }
+    setLockError("");
+    await updateLeague({ lockTime: d.toISOString() });
     setEditingLock(false);
   };
 
@@ -232,15 +237,18 @@ export function LeagueCard({ league, currentPlayer, members }: LeagueCardProps) 
             </div>
 
             {editingLock ? (
-              <div className="flex gap-2">
-                <Input
-                  type="datetime-local"
-                  value={newLockTime}
-                  onChange={(e) => setNewLockTime(e.target.value)}
-                  className="h-9"
-                />
-                <Button size="sm" onClick={handleUpdateLock} className="shrink-0">Save</Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditingLock(false)}>Cancel</Button>
+              <div className="space-y-1.5">
+                <div className="flex gap-2">
+                  <Input
+                    type="datetime-local"
+                    value={newLockTime}
+                    onChange={(e) => { setNewLockTime(e.target.value); setLockError(""); }}
+                    className="h-9"
+                  />
+                  <Button size="sm" onClick={handleUpdateLock} className="shrink-0">Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingLock(false); setLockError(""); }}>Cancel</Button>
+                </div>
+                {lockError && <p className="text-xs text-destructive">{lockError}</p>}
               </div>
             ) : (
               <div className="flex items-center justify-between">

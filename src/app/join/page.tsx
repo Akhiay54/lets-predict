@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -21,6 +21,7 @@ export default function JoinPage() {
   const [name, setName] = useState("");
 
   const encoded = searchParams.get("d");
+  const importingRef = useRef(false);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -43,15 +44,19 @@ export default function JoinPage() {
 
     if (!currentPlayer) {
       setStatus("need-name");
-    } else {
+    } else if (!importingRef.current) {
+      // currentPlayer just became available — kick off import if not already running
       doImport(encoded);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, encoded]);
+  }, [hydrated, encoded, currentPlayer]);
 
   async function doImport(enc: string) {
+    if (importingRef.current) return;
+    importingRef.current = true;
     setStatus("loading");
     const league = await importLeague(enc);
+    importingRef.current = false;
     if (!league) {
       setStatus("error");
       setErrorMsg("Could not import the league. The link may be expired or corrupted.");
@@ -67,7 +72,7 @@ export default function JoinPage() {
     const trimmed = name.trim();
     if (trimmed.length < 2) return;
     await setPlayer(trimmed);
-    doImport(encoded!);
+    await doImport(encoded!);
   }
 
   return (
