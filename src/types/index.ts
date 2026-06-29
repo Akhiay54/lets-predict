@@ -38,6 +38,7 @@ export interface Player {
   tiebreakerGoals: number | null;
   completionPct: number;
   leagueId?: string; // persisted so the player can rejoin from any browser
+  pinHash?: string;  // SHA-256 of their PIN; absent means no PIN set yet
 }
 
 export interface LeagueMember {

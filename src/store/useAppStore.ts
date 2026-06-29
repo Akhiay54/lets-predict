@@ -31,6 +31,10 @@ interface AppStore {
   hydrate: () => Promise<void>;
   logout: () => void;
 
+  // Returns the player WITHOUT committing state — login page handles PIN then calls finaliseLogin
+  lookupPlayer: (name: string) => Promise<{ player: Player; isNew: boolean }>;
+  finaliseLogin: (player: Player) => Promise<Player>;
+  setPin: (pin: string) => Promise<void>;
   setPlayer: (name: string) => Promise<Player>;
   createLeague: (name: string, lockTime: string) => Promise<League>;
   joinLeague: (inviteCode: string) => Promise<League | null>;
@@ -110,6 +114,16 @@ async function findLeagueByCode(inviteCode: string): Promise<League | null> {
   for (const d of snap.docs) {
     const l = d.data() as League;
     if (l.inviteCode === inviteCode.toUpperCase()) return l;
+  }
+  return null;
+}
+
+// Find a league that contains the given playerId as a member
+async function findLeagueByMemberId(playerId: string): Promise<League | null> {
+  const snap = await getDocs(collection(db, "leagues"));
+  for (const d of snap.docs) {
+    const l = d.data() as League;
+    if (l.members.some((m) => m.playerId === playerId)) return l;
   }
   return null;
 }
@@ -206,10 +220,76 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ _unsubs: unsubs });
   },
 
+  // Step 1: look up player by name without committing state (PIN check happens in UI)
+  async lookupPlayer(name: string) {
+    const returning = await findPlayerByName(name);
+    if (returning) return { player: returning, isNew: false };
+    const player: Player = {
+      id: generateId(),
+      name,
+      predictions: {},
+      tiebreakerGoals: null,
+      completionPct: 0,
+      createdAt: new Date().toISOString(),
+    };
+    return { player, isNew: true };
+  },
+
+  // Step 2: called after PIN verified — resolves league, commits state, sets up listeners
+  async finaliseLogin(player: Player) {
+    await savePlayer(player);
+    saveStoredPlayerId(player.id);
+
+    let leagueId = player.leagueId ?? null;
+    let league = leagueId ? await fetchLeague(leagueId) : null;
+
+    // Fallback for proxy players who were added before leagueId stamping
+    if (!league) {
+      const found = await findLeagueByMemberId(player.id);
+      if (found) {
+        league = found;
+        leagueId = found.id;
+        await savePlayer({ ...player, leagueId: found.id });
+        player = { ...player, leagueId: found.id };
+      }
+    }
+
+    if (league) {
+      saveStoredLeagueId(league.id);
+    } else {
+      clearStoredLeagueId();
+    }
+
+    const computedMatches = computeBracket(player.predictions);
+    let allPlayers: Player[] = [];
+    let officialResults: Predictions = {};
+    if (league) {
+      [allPlayers, officialResults] = await Promise.all([
+        fetchLeagueMembers(league),
+        fetchResults(league.id),
+      ]);
+    }
+
+    set({ currentPlayer: player, league, allPlayers, officialResults, computedMatches });
+    if (league) get()._subscribeLeague(league.id);
+    return player;
+  },
+
+  // Set or update PIN for the current player
+  async setPin(pin: string) {
+    const { hashPin } = await import("@/lib/utils");
+    const player = get().currentPlayer;
+    if (!player) return;
+    const pinHash = await hashPin(pin);
+    const updated = { ...player, pinHash };
+    await savePlayer(updated);
+    set({ currentPlayer: updated });
+  },
+
+  // Legacy wrapper — used by join/page and sync/page where PIN flow isn't needed
   async setPlayer(name: string) {
     const existing = get().currentPlayer;
     if (existing && existing.name === name) {
-      // Already the right player — but ensure league is loaded if it wasn't
       if (!get().league && existing.leagueId) {
         const league = await fetchLeague(existing.leagueId);
         if (league) {
@@ -224,50 +304,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
       return existing;
     }
-
-    // Restore existing account by name, or create new
-    console.log("[setPlayer] looking up name:", name);
-    const returning = await findPlayerByName(name);
-    console.log("[setPlayer] found in Firestore:", returning?.id, "leagueId:", returning?.leagueId);
-    const player: Player = returning ?? {
-      id: generateId(),
-      name,
-      predictions: {},
-      tiebreakerGoals: null,
-      completionPct: 0,
-      createdAt: new Date().toISOString(),
-    };
-
-    await savePlayer(player);
-    saveStoredPlayerId(player.id);
-
-    // Only use leagueId from the Firestore player doc — never inherit from localStorage
-    const leagueId = player.leagueId ?? null;
-    const league = leagueId ? await fetchLeague(leagueId) : null;
-
-    console.log("[setPlayer] player.leagueId:", player.leagueId, "→ fetching league:", leagueId);
-    console.log("[setPlayer] league found:", league?.name ?? null);
-    // Now safe to clear/update localStorage league pointer
-    if (league) {
-      saveStoredLeagueId(league.id);
-    } else {
-      clearStoredLeagueId();
-    }
-
-    const computedMatches = computeBracket(player.predictions);
-
-    let allPlayers: Player[] = [];
-    let officialResults: Predictions = {};
-    if (league) {
-      [allPlayers, officialResults] = await Promise.all([
-        fetchLeagueMembers(league),
-        fetchResults(league.id),
-      ]);
-    }
-
-    set({ currentPlayer: player, league, allPlayers, officialResults, computedMatches });
-    if (league) get()._subscribeLeague(league.id);
-    return player;
+    const { player } = await get().lookupPlayer(name);
+    return get().finaliseLogin(player);
   },
 
   logout() {
@@ -482,7 +520,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
           members: [...league.members, { playerId: existing.id, joinedAt: new Date().toISOString(), isOwner: false }],
         };
         await saveLeague(updated);
-        // onSnapshot will update allPlayers automatically
+      }
+      // Stamp leagueId so the player can restore their league from any browser
+      if (!existing.leagueId) {
+        await savePlayer({ ...existing, leagueId: league.id });
       }
       return existing;
     }
@@ -494,6 +535,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       tiebreakerGoals: null,
       completionPct: 0,
       createdAt: new Date().toISOString(),
+      leagueId: league.id, // stamp so they can restore on any browser
     };
     await savePlayer(player);
 
@@ -502,7 +544,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       members: [...league.members, { playerId: player.id, joinedAt: new Date().toISOString(), isOwner: false }],
     };
     await saveLeague(updated);
-    // onSnapshot will fire and refresh allPlayers
     return player;
   },
 
