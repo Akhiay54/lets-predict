@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Trophy, RefreshCw, Info } from "lucide-react";
+import { Trophy, RefreshCw, Info, DollarSign } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { computeLeaderboard } from "@/lib/scoring";
 import { LeaderboardTable } from "@/components/leaderboard/LeaderboardTable";
@@ -52,6 +52,28 @@ export default function LeaderboardPage() {
           )}
         </div>
       </motion.div>
+
+      {/* Prize banner */}
+      {league && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="rounded-2xl bg-gradient-to-r from-yellow-500/20 via-amber-500/15 to-yellow-500/20 border border-yellow-500/40 px-5 py-4 flex items-center gap-3"
+        >
+          <div className="h-9 w-9 rounded-xl bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+            <DollarSign className="h-5 w-5 text-yellow-400" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-yellow-300">
+              Heads Up — Finish on top of the league and win <span className="text-yellow-400">$1000</span>!
+            </p>
+            <p className="text-xs text-yellow-500/70 mt-0.5">
+              Keep predicting and climb the rankings. Only the champion takes it all.
+            </p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Scoring guide */}
       <motion.div

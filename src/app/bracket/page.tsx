@@ -112,7 +112,7 @@ export default function BracketPage() {
               <div>
                 <div className="font-semibold text-sm">🎯 Tiebreaker</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  How many total goals will be scored in the Final?
+                  How many total goals will be scored in the Final? <span className="text-yellow-500/70">(includes extra time, excludes penalties)</span>
                 </div>
               </div>
               <div className="flex gap-2">

@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Trophy, Users, BarChart3, ArrowRight, Lock, Zap, Globe
+  Trophy, Users, BarChart3, ArrowRight, Lock, Zap, Globe, DollarSign, Copy, Check
 } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,15 @@ export default function HomePage() {
 }
 
 function WelcomeHero() {
+  const [copied, setCopied] = useState(false);
+  const leagueCode = "EJUAJVME";
+
+  const copyCode = async () => {
+    try { await navigator.clipboard.writeText(leagueCode); } catch {}
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 text-center py-16">
       <motion.div
@@ -70,6 +80,49 @@ function WelcomeHero() {
           <div className="flex items-center gap-1.5"><Zap className="h-4 w-4" /> 31 Matches</div>
           <div className="flex items-center gap-1.5"><Trophy className="h-4 w-4" /> 1 Champion</div>
         </div>
+
+        {/* Prize banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="rounded-2xl bg-gradient-to-r from-yellow-500/20 via-amber-500/15 to-yellow-500/20 border border-yellow-500/40 px-5 py-4 text-left flex items-start gap-3"
+        >
+          <div className="h-9 w-9 rounded-xl bg-yellow-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <DollarSign className="h-5 w-5 text-yellow-400" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-yellow-300">
+              Heads Up — Finish on top of the league and win <span className="text-yellow-400">$1000</span>!
+            </p>
+            <p className="text-xs text-yellow-500/70 mt-0.5">
+              Keep predicting and climb the rankings. Only the champion takes it all.
+            </p>
+          </div>
+        </motion.div>
+
+        {/* League code */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="rounded-2xl bg-secondary/60 border border-border px-5 py-4 text-left space-y-2"
+        >
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">League Code</p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 bg-card rounded-lg px-4 py-2.5 font-mono text-xl font-bold tracking-[0.3em] text-center border border-border">
+              {leagueCode}
+            </div>
+            <button
+              onClick={copyCode}
+              className="h-10 w-10 rounded-lg border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground/60">Use this code after logging in to join the league.</p>
+        </motion.div>
+
       </motion.div>
     </div>
   );
@@ -213,6 +266,24 @@ function Dashboard() {
               <CountdownTimer lockTime={league.lockTime} />
             </CardContent>
           </Card>
+        </motion.div>
+      )}
+
+      {league && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}>
+          <div className="rounded-2xl bg-gradient-to-r from-yellow-500/20 via-amber-500/15 to-yellow-500/20 border border-yellow-500/40 px-5 py-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+              <DollarSign className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-yellow-300">
+                Heads Up — Finish on top of the league and win <span className="text-yellow-400">$1000</span>!
+              </p>
+              <p className="text-xs text-yellow-500/70 mt-0.5">
+                Keep predicting and climb the rankings. Only the champion takes it all.
+              </p>
+            </div>
+          </div>
         </motion.div>
       )}
     </div>
