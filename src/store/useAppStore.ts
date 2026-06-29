@@ -463,7 +463,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   async setPrediction(matchId, winnerId) {
     const { currentPlayer, league } = get();
     if (!currentPlayer) return;
-    if (league && isLocked(league.lockTime)) return;
+    // lock check disabled — open for all
 
     // Read fresh from Firestore to avoid read-modify-write race on rapid clicks
     const fresh = await fetchPlayer(currentPlayer.id);
@@ -607,9 +607,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   isLocked() {
-    const league = get().league;
-    if (!league) return false;
-    return isLocked(league.lockTime);
+    return false;
   },
 
   leagueMembers() {
