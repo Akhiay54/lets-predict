@@ -215,10 +215,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     await savePlayer(player);
     saveStoredPlayerId(player.id);
+    // Clear any leagueId left by a previous user on this browser
+    clearStoredLeagueId();
 
-    // Prefer leagueId from Firestore player doc (works across browsers),
-    // fall back to localStorage (works for new players not yet in Firestore)
-    const leagueId = player.leagueId ?? getStoredLeagueId();
+    // Only use leagueId from the Firestore player doc — never inherit from localStorage
+    const leagueId = player.leagueId ?? null;
     const league = leagueId ? await fetchLeague(leagueId) : null;
     if (league) saveStoredLeagueId(league.id);
     const computedMatches = computeBracket(player.predictions);
