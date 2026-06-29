@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import {
   doc, getDoc, setDoc, updateDoc, onSnapshot,
-  collection, getDocs, deleteDoc, deleteField, Unsubscribe,
+  collection, getDocs, deleteField, Unsubscribe,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { computeBracket, computeCompletionPct, getDescendantMatchIds } from "@/lib/bracket";
@@ -144,16 +144,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const playerId = getStoredPlayerId();
     const storedLeagueId = getStoredLeagueId();
-    console.log("[hydrate] start", { playerId, storedLeagueId });
 
     // Fetch player first so we can fall back to player.leagueId if localStorage is missing it
     const player = playerId ? await fetchPlayer(playerId) : null;
-    console.log("[hydrate] player", player?.name, "leagueId on doc:", player?.leagueId);
 
     // localStorage is the fast path; Firestore player doc is the fallback (cross-browser restore)
     const leagueId = storedLeagueId ?? player?.leagueId ?? null;
     const league = leagueId ? await fetchLeague(leagueId) : null;
-    console.log("[hydrate] leagueId resolved:", leagueId, "league found:", league?.name ?? null);
     // Sync localStorage so subsequent hydrations are fast
     if (league && !storedLeagueId) saveStoredLeagueId(league.id);
 
@@ -171,7 +168,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ]);
     }
 
-    console.log("[hydrate] done — player:", player?.name, "league:", league?.name, "allPlayers:", allPlayers.length);
     set({ currentPlayer: player, league, allPlayers, officialResults, computedMatches, hydrated: true });
 
     // Set up real-time listeners if we have a league

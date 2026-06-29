@@ -31,7 +31,7 @@ export default function LoginPage() {
   const [isNew, setIsNew] = useState(false);
 
   const router = useRouter();
-  const { lookupPlayer, finaliseLogin, setPin: storeSavePin } = useAppStore();
+  const { lookupPlayer, finaliseLogin } = useAppStore();
 
   const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,9 +83,8 @@ export default function LoginPage() {
     const pinHash = await hashPin(pin);
     const playerWithPin = { ...pendingPlayer, pinHash };
     await finaliseLogin(playerWithPin);
-    // storeSavePin is redundant here since finaliseLogin writes the player, but keep in sync
     router.push("/bracket");
-    setLoading(false);
+    // setLoading(false) intentionally omitted — router.push unmounts this component
   };
 
   return (
