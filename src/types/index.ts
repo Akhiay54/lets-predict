@@ -37,6 +37,7 @@ export interface Player {
   predictions: Predictions;
   tiebreakerGoals: number | null;
   completionPct: number;
+  leagueId?: string; // persisted so the player can rejoin from any browser
 }
 
 export interface LeagueMember {

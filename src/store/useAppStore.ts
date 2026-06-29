@@ -216,9 +216,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await savePlayer(player);
     saveStoredPlayerId(player.id);
 
-    // Re-fetch league membership for this player
-    const leagueId = getStoredLeagueId();
+    // Prefer leagueId from Firestore player doc (works across browsers),
+    // fall back to localStorage (works for new players not yet in Firestore)
+    const leagueId = player.leagueId ?? getStoredLeagueId();
     const league = leagueId ? await fetchLeague(leagueId) : null;
+    if (league) saveStoredLeagueId(league.id);
     const computedMatches = computeBracket(player.predictions);
     set({ currentPlayer: player, league, computedMatches });
     if (league) get()._subscribeLeague(league.id);
@@ -244,8 +246,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     };
     await saveLeague(league);
     saveStoredLeagueId(league.id);
+    // Stamp leagueId on player so they can rejoin from any browser
+    const updatedPlayer = { ...player, leagueId: league.id };
+    await savePlayer(updatedPlayer);
     const allPlayers = await fetchLeagueMembers(league);
-    set({ league, allPlayers });
+    set({ league, allPlayers, currentPlayer: updatedPlayer });
     get()._subscribeLeague(league.id);
     return league;
   },
@@ -268,11 +273,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     if (!alreadyMember) await saveLeague(updated);
     saveStoredLeagueId(updated.id);
+    // Stamp leagueId on player so they can rejoin from any browser
+    const updatedPlayer = { ...player, leagueId: updated.id };
+    await savePlayer(updatedPlayer);
     const [allPlayers, officialResults] = await Promise.all([
       fetchLeagueMembers(updated),
       fetchResults(updated.id),
     ]);
-    set({ league: updated, allPlayers, officialResults });
+    set({ league: updated, allPlayers, officialResults, currentPlayer: updatedPlayer });
     get()._subscribeLeague(updated.id);
     return updated;
   },
@@ -300,8 +308,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
           };
 
       await saveLeague(updated);
-      await savePlayer(player);
+      // Stamp leagueId on player so they can rejoin from any browser
+      const updatedPlayer = { ...player, leagueId: updated.id };
+      await savePlayer(updatedPlayer);
       saveStoredLeagueId(updated.id);
+      set({ currentPlayer: updatedPlayer });
 
       const [allPlayers, officialResults] = await Promise.all([
         fetchLeagueMembers(updated),
@@ -323,9 +334,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
       members: league.members.filter((m) => m.playerId !== currentPlayer.id),
     };
     await saveLeague(updated);
+    // Remove leagueId from player doc so name-based restore doesn't rejoin them
+    const updatedPlayer = { ...currentPlayer, leagueId: undefined };
+    await savePlayer(updatedPlayer);
     clearStoredLeagueId();
     get()._unsubs.forEach((u) => u());
-    set({ league: null, allPlayers: [], _unsubs: [] });
+    set({ league: null, allPlayers: [], currentPlayer: updatedPlayer, _unsubs: [] });
   },
 
   async updateLeague(updates) {
