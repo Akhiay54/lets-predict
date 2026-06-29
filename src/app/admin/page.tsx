@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Shield, Save, Trophy, AlertTriangle, Target, UserPlus, Users, ChevronDown, ChevronUp, Edit3 } from "lucide-react";
+import { Shield, Save, Trophy, AlertTriangle, Target, UserPlus, Users, ChevronDown, ChevronUp, Edit3, RefreshCw } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 import { computeBracket } from "@/lib/bracket";
 import { MatchCard } from "@/components/bracket/MatchCard";
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlayerAvatar } from "@/components/shared/PlayerAvatar";
 import type { Round, Player } from "@/types";
 import { TIEBREAK_KEY } from "@/lib/constants";
+import { fetchESPNResults, mergeESPNResults } from "@/lib/espn";
 
 const ROUNDS: Round[] = ["R32", "R16", "QF", "SF", "FINAL"];
 
@@ -22,6 +23,8 @@ export default function AdminPage() {
     setOfficialResult, addProxyPlayer, setProxyPrediction, setProxyTiebreaker,
   } = useAppStore();
   const [saved, setSaved] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [tiebreakerInput, setTiebreakerInput] = useState(
     officialResults[TIEBREAK_KEY] ?? ""
   );
@@ -91,6 +94,29 @@ export default function AdminPage() {
     await setOfficialResult(matchId, winnerId);
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const syncResult = await fetchESPNResults();
+      if (syncResult.updated === 0) {
+        setSyncMsg("No finished matches found yet.");
+      } else {
+        const merged = mergeESPNResults(officialResults, syncResult);
+        for (const [matchId, winnerId] of Object.entries(merged)) {
+          if (officialResults[matchId] !== winnerId) {
+            await setOfficialResult(matchId, winnerId as string);
+          }
+        }
+        setSyncMsg(`Synced ${syncResult.updated} match${syncResult.updated !== 1 ? "es" : ""} from ESPN.`);
+      }
+    } catch {
+      setSyncMsg("Failed to fetch from ESPN. Check your connection.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="max-w-full px-4 sm:px-6 py-8 space-y-6">
       {/* Header */}
@@ -127,9 +153,41 @@ export default function AdminPage() {
         <CardContent className="p-4 flex items-start gap-3">
           <Trophy className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <strong>How to use:</strong> Click the winner of each match in the official bracket.
-            Winners automatically advance. The leaderboard updates instantly when you set results.
+            <strong>How to use:</strong> Click <strong>Sync from ESPN</strong> to auto-fill finished matches,
+            or click winners manually below. The leaderboard updates instantly.
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ESPN Sync */}
+      <Card className="glass border-emerald-500/20">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-emerald-400" />
+                <span className="font-semibold text-sm">Auto-Sync from ESPN</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Fetches all finished matches and fills results automatically. Run after each match day.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing…" : "Sync from ESPN"}
+            </Button>
+          </div>
+          {syncMsg && (
+            <p className={`text-xs font-medium ${syncMsg.includes("Failed") ? "text-destructive" : "text-emerald-400"}`}>
+              {syncMsg}
+            </p>
+          )}
         </CardContent>
       </Card>
 
