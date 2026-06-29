@@ -510,7 +510,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const syncResult = await fetchESPNResults();
     if (syncResult.updated === 0) return { updated: 0 };
     const merged = mergeESPNResults(officialResults, syncResult);
-    // Only write matches that are actually new/changed
     const changed = syncResult.matches.filter(
       ({ matchId, winner }) => officialResults[matchId] !== winner
     );
