@@ -43,7 +43,9 @@ export async function fetchESPNResults(): Promise<SyncResult> {
     if (!comp) continue;
 
     const status = comp.status.type.name;
-    const isFinished = status === "STATUS_FINAL" || status === "STATUS_FULL_TIME" || status === "STATUS_FULL_TIME_AET";
+    const isFinished = status === "STATUS_FINAL" || status === "STATUS_FULL_TIME"
+      || status === "STATUS_FULL_TIME_AET" || status === "STATUS_FINAL_PEN"
+      || status === "STATUS_FINAL_AET";
     if (!isFinished) {
       result.skipped++;
       continue;
