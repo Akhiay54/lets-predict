@@ -5,7 +5,7 @@ import {
   doc, getDoc, setDoc, updateDoc, onSnapshot,
   collection, getDocs, deleteField, Unsubscribe,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db, ensureAuth } from "@/lib/firebase";
 import { computeBracket, computeCompletionPct, getDescendantMatchIds } from "@/lib/bracket";
 import {
   getStoredPlayerId, saveStoredPlayerId, clearStoredPlayerId,
@@ -141,6 +141,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   _unsubs: [],
 
   async hydrate() {
+    await ensureAuth();
     // Tear down any prior listeners
     get()._unsubs.forEach((u) => u());
     set({ _unsubs: [] });
@@ -221,6 +222,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Step 1: look up player by name without committing state (PIN check happens in UI)
   async lookupPlayer(name: string) {
+    await ensureAuth();
     const returning = await findPlayerByName(name);
     if (returning) return { player: returning, isNew: false };
     const player: Player = {
@@ -236,6 +238,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Step 2: called after PIN verified — resolves league, commits state, sets up listeners
   async finaliseLogin(player: Player) {
+    await ensureAuth();
     await savePlayer(player);
     saveStoredPlayerId(player.id);
 
